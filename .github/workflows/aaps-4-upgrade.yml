@@ -1,0 +1,50 @@
+name: Build AAPS 4.0 upgrade
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout existing signing files
+        uses: actions/checkout@v4
+        with:
+          path: previous
+          persist-credentials: false
+      - name: Checkout diyaps 4.0.0
+        uses: actions/checkout@v4
+        with:
+          repository: diyaps/AndroidAPS
+          ref: e0bc74f8bb7a40ea71d931d46f66a46aeb6f4f74
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Preserve existing signing configuration
+        run: |
+          cp -a previous/keystore/. source/keystore/
+          chmod +x source/gradlew
+      - name: Build signed full release
+        working-directory: source
+        env:
+          storeFile: ${{ secrets.STORE_FILE }}
+          storePassword: ${{ secrets.STORE_PASSWORD }}
+          keyAlias: ${{ secrets.KEY_ALIAS }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleFullRelease --no-daemon \
+            -Dorg.gradle.jvmargs="-Xmx5g -XX:+UseParallelGC" \
+            -Dorg.gradle.workers.max=2
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaps-4.0.0-full-release
+          path: source/app/build/outputs/apk/full/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
